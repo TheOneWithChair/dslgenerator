@@ -1,0 +1,126 @@
+app:
+  description: A simple workflow that takes a long text input and generates a concise
+    single-paragraph summary.
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: Text Summarizer
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      - id: 673f3261-71e8-48b4-826a-9f8e404b087a-source-b3f66367-2d4e-4f74-8846-92c2a71d87e5-target
+        source: 673f3261-71e8-48b4-826a-9f8e404b087a
+        sourceHandle: source
+        target: b3f66367-2d4e-4f74-8846-92c2a71d87e5
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: start
+          targetType: llm
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+      - id: b3f66367-2d4e-4f74-8846-92c2a71d87e5-source-099a5e82-e3e5-4d2c-87fa-80436d4924a2-target
+        source: b3f66367-2d4e-4f74-8846-92c2a71d87e5
+        sourceHandle: source
+        target: 099a5e82-e3e5-4d2c-87fa-80436d4924a2
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: end
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+    nodes:
+      - id: 673f3261-71e8-48b4-826a-9f8e404b087a
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 80
+          y: 282
+        data:
+          type: start
+          title: Start
+          desc: Input text to be summarized
+          variables:
+            - variable: content
+              label: Content to Summarize
+              type: paragraph
+              required: true
+      - id: b3f66367-2d4e-4f74-8846-92c2a71d87e5
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 380
+          y: 282
+        data:
+          type: llm
+          title: Summarize Text
+          desc: Generates a single paragraph summary of the input content.
+          model:
+            provider: openai
+            name: gpt-4o
+            mode: chat
+            completion_params:
+              temperature: 0.5
+          prompt_template:
+            - role: system
+              text: You are a professional editor. Your task is to summarize the provided
+                text into exactly one concise paragraph. Do not use bullet points
+                or multiple paragraphs.
+            - role: user
+              text: 'Please summarize the following text:
+
+                {{#673f3261-71e8-48b4-826a-9f8e404b087a.content#}}'
+          variables: []
+          context:
+            enabled: false
+            variable_selector: []
+          vision:
+            enabled: false
+      - id: 099a5e82-e3e5-4d2c-87fa-80436d4924a2
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 680
+          y: 282
+        data:
+          type: end
+          title: End
+          desc: Output the final summary
+          outputs:
+            - variable: summary
+              value_selector:
+                - b3f66367-2d4e-4f74-8846-92c2a71d87e5
+                - text
+              value_type: string
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7
