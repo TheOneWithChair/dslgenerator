@@ -57,3 +57,62 @@ INFO:     127.0.0.1:49898 - "GET /health HTTP/1.1" 200 OK
 2026-05-03 20:10:46,835 - agent.assembler - INFO - Received YAML from Assembler Agent model.
 INFO:     127.0.0.1:49900 - "POST /generate HTTP/1.1" 200 OK
 INFO:     127.0.0.1:57419 - "GET /health HTTP/1.1" 200 OK
+
+
+
+
+after MCP layer output in terminal
+  File "C:\Users\chari\anaconda3\Lib\site-packages\uvicorn\server.py", line 328, in capture_signals
+
+G:\projects\dslgenerator\backend>uvicorn main:app --reload --port 8001
+INFO:     Will watch for changes in these directories: ['G:\\projects\\dslgenerator\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [53648] using WatchFiles
+
+--- Dify DSL Generator Backend Starting ---
+2026-05-03 22:17:17,071 - orchestrator - INFO - Initializing Dify DSL Generator Backend...
+✅ Knowledge store loaded. 12 node types available.
+2026-05-03 22:17:20,801 - orchestrator - INFO - Knowledge store loaded successfully.
+INFO:     Started server process [44836]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:65023 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65024 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55618 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55619 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55620 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 22:17:36,364 - orchestrator - INFO - ==> /intake endpoint called with 1 conversation turns.
+2026-05-03 22:17:36,364 - agent.intake - INFO - --- STAGE 1: INTAKE AGENT ---
+INFO:     127.0.0.1:55621 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55624 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62028 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 22:17:51,946 - orchestrator - INFO - ==> /intake endpoint called with 3 conversation turns.
+2026-05-03 22:17:51,946 - agent.intake - INFO - --- STAGE 1: INTAKE AGENT ---
+INFO:     127.0.0.1:62029 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62032 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55463 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55464 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 22:18:14,389 - orchestrator - INFO - ==> /intake endpoint called with 5 conversation turns.
+2026-05-03 22:18:14,390 - agent.intake - INFO - --- STAGE 1: INTAKE AGENT ---
+INFO:     127.0.0.1:55465 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55467 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 22:18:18,514 - orchestrator - INFO - ==> /generate endpoint called. Invoking LangGraph workflow...
+2026-05-03 22:18:18,515 - orchestrator - INFO - Found existing brief in conversation. Will attempt to skip intake.
+2026-05-03 22:18:18,517 - agent.intake - INFO - --- STAGE 1: INTAKE AGENT ---
+2026-05-03 22:18:18,517 - agent.intake - INFO - Brief already present in state, skipping intake.
+2026-05-03 22:18:18,520 - agent.planner - INFO - --- STAGE 2: PLANNER AGENT ---
+2026-05-03 22:18:26,166 - mcp_layer - INFO - --- STAGE 3: MCP SCHEMA FETCHER ---
+2026-05-03 22:18:26,167 - mcp_layer - INFO - [MCP Layer] Fetching schemas for: ['end', 'start', 'llm']      
+2026-05-03 22:18:26,167 - mcp_layer - INFO - [MCP Layer] Successfully fetched 3 schemas.
+2026-05-03 22:18:26,167 - mcp_layer - INFO - [MCP Layer] Fetching edge rules via MCP...
+2026-05-03 22:18:26,168 - mcp_layer - INFO - [MCP Layer] Fetching layout rules via MCP...
+2026-05-03 22:18:26,168 - mcp_layer - INFO - [MCP Layer] Fetching app header for mode: workflow via MCP...  
+2026-05-03 22:18:26,169 - agent.assembler - INFO - --- STAGE 4: ASSEMBLER AGENT ---
+2026-05-03 22:18:26,175 - agent.assembler - INFO - Assembler: Prompt constructed (11125 chars). Invoking LLM...
+2026-05-03 22:18:36,953 - agent.assembler - INFO - Assembler: LLM response received in 10.78s (3434 chars).
+2026-05-03 22:18:36,955 - agent.validator - INFO - --- STAGE 5: VALIDATOR ---
+2026-05-03 22:18:36,984 - orchestrator - INFO - Workflow finished. Done: True, Brief: True
+INFO:     127.0.0.1:55468 - "POST /generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62746 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60080 - "GET /health HTTP/1.1" 200 OK

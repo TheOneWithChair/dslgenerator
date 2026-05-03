@@ -99,7 +99,7 @@ uvicorn main:app --reload --port 8001
 
 ### Start the Frontend (Terminal 2)
 ```bash
-streamlit run frontend/app.py --server.port 8501
+streamlit run app.py --server.port 8501
 ```
 
 Once both are running, open your browser and navigate to `http://localhost:8501` to start generating workflows!
@@ -123,3 +123,31 @@ The current version supports generating complete workflows combining the followi
 3. Go to your Dify workspace.
 4. Click **Create from DSL** and upload/paste your generated file.
 5. Watch your entire node graph instantly appear!
+
+
+
+I have successfully refactored the entire project to use LangGraph as the core engine for all agents and processing stages, exactly as requested. The agents are no longer "normal Python scripts" but are now formal LangGraph components.
+
+🏗️ Architectural Refactor Summary
+Unified State Management (backend/state.py): Created a centralized AgentState using LangGraph's TypedDict. This state tracks the conversation, the generated brief, manifest, schemas, and orchestration metadata (like attempt counts and execution logs).
+
+LangGraph-Native Agents (backend/agents/): Refactored intake.py, planner.py, and assembler.py.
+
+Logic Migration: They no longer use raw SDK calls. I migrated them to use LangChain's ChatGoogleGenerativeAI integration.
+Node Implementation: Each file now exports a formal node function (e.g., intake_node, planner_node) that accepts and returns the AgentState.
+Graph Orchestration (backend/graph.py): This is now the central "brain" of the project. It defines the workflow graph:
+
+Stage 1 (Intake): Multi-turn chat node.
+Stage 2 (Planner): System architect node.
+Stage 3 (Schema Fetcher): MCP Tool node (fetches schemas from the registry).
+Stage 4 (Assembler): YAML developer node.
+Stage 5 (Validator): Structural check node.
+Feedback Loop: A conditional edge that automatically routes the flow from the Validator back to the Assembler if errors are detected, allowing for self-healing.
+MCP Layer Integration (backend/mcp_layer.py): Converted the Schema Fetcher into a formal stage in the graph. It acts as an MCP client that tools-call into your schema registry to ensure the Assembler has "hallucination-free" data.
+
+FastAPI Bridge (backend/main.py): Updated the API endpoints. Whether you call the individual /intake endpoint or the full /generate pipeline, the backend now initializes a LangGraph state and executes the graph.
+
+🚀 How to Run
+The backend will automatically reload with the new architecture. I've updated the requirements.txt with the necessary LangGraph and LangChain dependencies.
+
+Your agents are now formally orchestrated, stateful, and follow the professional workflow shown in your architecture diagram!

@@ -6,7 +6,7 @@ import streamlit as st
 import httpx
 import json
 
-BACKEND_URL = "http://localhost:8001"
+BACKEND_URL = "http://127.0.0.1:8001"
 
 # ─── Page config ────────────────────────────────────────────────────────────
 
@@ -15,6 +15,14 @@ st.set_page_config(
     page_icon="⚙️",
     layout="wide"
 )
+
+# ─── Diagnostic Function ─────────────────────────────────────────────────────
+def test_connection():
+    try:
+        r = httpx.get(f"{BACKEND_URL}/health", timeout=5)
+        return f"✅ Connection OK! Status: {r.status_code}, Response: {r.json()}"
+    except Exception as e:
+        return f"❌ Connection FAILED: {str(e)}"
 
 # ─── Session state init ──────────────────────────────────────────────────────
 
@@ -127,7 +135,10 @@ with left_col:
                 )
                 result = r.json()
             except Exception as e:
-                st.error(f"Backend error: {e}")
+                st.error(f"Backend unreachable at {BACKEND_URL}")
+                st.info("Check if the backend terminal shows any errors.")
+                if st.button("🔍 Diagnose Connection", key="diag_intake"):
+                    st.code(test_connection())
                 result = {"ready": False, "question": "Connection error. Is the backend running?"}
 
         if result.get("ready"):
@@ -158,27 +169,31 @@ with left_col:
                 r = httpx.post(
                     f"{BACKEND_URL}/generate",
                     json={"conversation": st.session_state.conversation},
-                    timeout=120
+                    timeout=300
                 )
                 result = r.json()
+                st.session_state.steps_log = result.get("steps", [])
             except Exception as e:
                 st.error(f"Generation failed: {e}")
-                result = {"done": False}
+                result = {"done": False, "question": f"Error: {str(e)}"}
 
         if result.get("done"):
             st.session_state.final_yaml = result.get("yaml")
             st.session_state.manifest = result.get("manifest")
-            st.session_state.steps_log = result.get("steps", [])
             st.session_state.errors = result.get("errors", [])
             st.session_state.phase = "done"
             st.rerun()
         else:
-            # Still needs intake
+            # Still needs intake or failed
             question = result.get("question", "")
             if question:
                 st.session_state.conversation.append({"role": "assistant", "content": question})
                 st.session_state.phase = "answering"
                 st.rerun()
+            else:
+                st.error("Generation stopped without completion and no clarifying question was provided.")
+                if st.button("Try again"):
+                    st.rerun()
 
     elif st.session_state.phase == "done":
         st.success("✅ DSL generated! See output on the right.")

@@ -1,20 +1,12 @@
-"""
-agents/intake.py
-Multi-turn intake agent that collects a structured brief from the user.
-"""
 import json
 import os
-import google.generativeai as genai
-from dotenv import load_dotenv
 import logging
+from typing import Dict, Any, List
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from state import AgentState
 
 logger = logging.getLogger("agent.intake")
-
-load_dotenv(override=True)
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("MODEL", "gemini-flash-latest")
-
 
 INTAKE_SYSTEM = """You are a Dify workflow intake specialist. Your job is to understand 
 what the user wants to build and collect all information needed to plan a Dify DSL workflow.
@@ -60,49 +52,54 @@ If you still need more information, respond with ONLY:
 {{"ready": false, "question": "your single clarifying question here"}}
 """
 
-
-def run_intake(conversation_history: list, node_types: list) -> dict:
+def intake_node(state: AgentState) -> Dict[str, Any]:
     """
-    Run one turn of the intake agent.
-    
-    Args:
-        conversation_history: List of {"role": "user"|"assistant", "content": str}
-        node_types: List of available node type strings
-    
-    Returns:
-        {"ready": False, "question": "..."} — needs more info
-        {"ready": True, ...brief fields...} — brief complete
+    LangGraph Stage 1: Intake Agent node.
     """
-    logger.info("Initializing Intake Agent...")
-    system = INTAKE_SYSTEM.format(node_types=", ".join(node_types))
-
-    # Build Gemini chat history (exclude last user message — passed separately)
-    model = genai.GenerativeModel(
-        model_name=MODEL,
-        system_instruction=system,
+    logger.info("--- STAGE 1: INTAKE AGENT ---")
+    
+    if state.get("brief"):
+        logger.info("Brief already present in state, skipping intake.")
+        return {
+            "steps_log": ["Stage 1: Intake skipped (brief already present)."]
+        }
+    
+    llm = ChatGoogleGenerativeAI(
+        model=os.getenv("MODEL", "gemini-flash-latest"),
+        google_api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.7
     )
-
-    # Convert conversation history to Gemini format
-    gemini_history = []
-    for msg in conversation_history[:-1]:
-        role = "model" if msg["role"] == "assistant" else "user"
-        gemini_history.append({"role": role, "parts": [msg["content"]]})
-
-    chat = model.start_chat(history=gemini_history)
-
-    last_message = conversation_history[-1]["content"]
-    logger.info(f"Sending message to Intake Agent model. History length: {len(gemini_history)}")
-    response = chat.send_message(last_message)
-
-    raw = response.text.strip()
-    logger.info("Received response from Intake Agent model.")
-
-    # Try to parse as JSON
+    
+    system_prompt = INTAKE_SYSTEM.format(node_types=", ".join(state["node_types"]))
+    messages = [SystemMessage(content=system_prompt)]
+    
+    for msg in state["conversation"]:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        else:
+            messages.append(AIMessage(content=msg["content"]))
+            
+    response = llm.invoke(messages)
+    raw = response.content.strip()
+    
     try:
         # Strip markdown fences if present
         clean = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(clean)
-        return result
+        
+        if result.get("ready"):
+            return {
+                "brief": result,
+                "steps_log": ["Stage 1: Intake complete. Brief extracted."]
+            }
+        else:
+            return {
+                "intake_question": result.get("question", "Could you provide more details?"),
+                "steps_log": ["Stage 1: Intake needs more clarification."]
+            }
     except json.JSONDecodeError:
-        # LLM returned plain text (a question) — wrap it
-        return {"ready": False, "question": raw}
+        # LLM returned plain text (a question)
+        return {
+            "intake_question": raw,
+            "steps_log": ["Stage 1: Intake returned clarifying question."]
+        }

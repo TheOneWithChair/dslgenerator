@@ -17,6 +17,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("orchestrator")
 
 load_dotenv(override=True)
+print("\n--- Dify DSL Generator Backend Starting ---")
+logger.info("Initializing Dify DSL Generator Backend...")
 
 # Ensure backend/ is on sys.path so `agents` and `validator` can be imported
 # regardless of where uvicorn is launched from.
@@ -24,10 +26,11 @@ _BACKEND_DIR = Path(__file__).parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from agents.intake import run_intake
-from agents.planner import run_planner
-from agents.assembler import run_assembler
 from validator import validate_dsl
+from graph import build_dsl_workflow
+
+# Compile LangGraph workflow once at startup
+dsl_workflow = build_dsl_workflow()
 
 app = FastAPI(title="Dify DSL Generator", version="1.0.0")
 
@@ -50,6 +53,8 @@ def load_store() -> dict:
     return json.loads(STORE_PATH.read_text())
 
 store = load_store()
+print(f"✅ Knowledge store loaded. {len(store['node_types'])} node types available.")
+logger.info("Knowledge store loaded successfully.")
 
 
 # ─── Request/Response Models ────────────────────────────────────────────────
@@ -98,64 +103,77 @@ def get_schema(node_type: str):
 @app.post("/intake")
 def intake(req: IntakeRequest):
     """
-    One turn of the intake agent.
-    Returns either a clarifying question or the complete brief.
+    One turn of the intake agent using the LangGraph node logic.
     """
     logger.info(f"==> /intake endpoint called with {len(req.conversation)} conversation turns.")
-    result = run_intake(req.conversation, store["node_types"])
-    if result.get("ready"):
-        logger.info("<== Intake Agent finished: Brief is READY.")
+    
+    # Run the intake node logic
+    state = {
+        "conversation": req.conversation,
+        "node_types": store["node_types"],
+        "brief": None,
+        "intake_question": None,
+        "steps_log": []
+    }
+    
+    from agents.intake import intake_node
+    result_state = intake_node(state)
+    
+    if result_state.get("brief"):
+        return result_state["brief"]
     else:
-        logger.info("<== Intake Agent finished: Asking clarifying question.")
-    return result
+        return {"ready": False, "question": result_state.get("intake_question")}
 
 
 @app.post("/plan")
 def plan(req: PlanRequest):
     """
-    Runs the planner agent on a completed brief.
-    Returns the node manifest JSON.
+    Runs the planner agent node on a completed brief.
     """
-    logger.info("==> /plan endpoint called. Starting Planner Agent...")
-    manifest = run_planner(req.brief, store["node_types"])
-    nodes_count = len(manifest.get("nodes", []))
-    logger.info(f"<== Planner Agent finished. Generated manifest with {nodes_count} nodes.")
-    return {"manifest": manifest}
+    logger.info("==> /plan endpoint called. Starting Planner Agent node...")
+    
+    state = {
+        "brief": req.brief,
+        "node_types": store["node_types"],
+        "steps_log": []
+    }
+    
+    from agents.planner import planner_node
+    result_state = planner_node(state)
+    
+    return {"manifest": result_state["manifest"]}
 
 
 @app.post("/assemble")
 def assemble(req: AssembleRequest):
     """
-    Assembles YAML from the manifest.
-    Fetches only the schemas needed for the nodes in this manifest.
+    Assembles YAML using the Assembler node logic.
     """
-    logger.info("==> /assemble endpoint called. Starting Assembler Agent...")
-    manifest = req.manifest
-
-    # Fetch only needed schemas (not the full store)
-    needed_types = list({node["type"] for node in manifest.get("nodes", [])})
-    enriched_schemas = {}
-    for ntype in needed_types:
-        schema = store["node_schemas"].get(ntype)
-        if schema:
-            enriched_schemas[ntype] = schema
-
-    # Pick the right app header template
-    app_mode = manifest.get("app_mode", "workflow")
-    header_key = "workflow" if app_mode == "workflow" else "chat"
-    header_template = store["app_header"].get(header_key, "")
-
-    yaml_str = run_assembler(
-        manifest=manifest,
-        enriched_schemas=enriched_schemas,
-        edge_rules=store["edge_rules"],
-        layout_rules=store["layout_rules"],
-        app_header_template=header_template,
-        previous_errors=req.previous_errors,
-        previous_yaml=req.previous_yaml,
-    )
-    logger.info("<== Assembler Agent finished. YAML assembled successfully.")
-    return {"yaml": yaml_str}
+    logger.info("==> /assemble endpoint called. Starting Assembler Agent node...")
+    
+    # 1. Run Stage 3 logic (Schema fetching)
+    from mcp_layer import schema_fetcher_node
+    schema_state = schema_fetcher_node({
+        "manifest": req.manifest,
+        "store": store,
+        "steps_log": []
+    })
+    
+    # 2. Run Stage 4 logic (Assembling)
+    from agents.assembler import assembler_node
+    assembler_state = assembler_node({
+        "manifest": req.manifest,
+        "enriched_schemas": schema_state["enriched_schemas"],
+        "edge_rules": schema_state["edge_rules"],
+        "layout_rules": schema_state["layout_rules"],
+        "app_header_template": schema_state["app_header_template"],
+        "errors": req.previous_errors,
+        "yaml_str": req.previous_yaml,
+        "attempt": 0,
+        "steps_log": []
+    })
+    
+    return {"yaml": assembler_state["yaml_str"]}
 
 
 @app.post("/validate")
@@ -171,79 +189,76 @@ def validate(req: ValidateRequest):
 @app.post("/generate")
 def generate(req: GenerateRequest):
     """
-    Full pipeline: intake → plan → assemble → validate (with retry).
-    The conversation must include the user's initial prompt + all Q&A.
-    The last assistant message should be the complete brief JSON.
+    Full pipeline executed via LangGraph: intake → plan → schema (MCP) → assemble → validate (with retry).
     """
-    steps_log = []
+    logger.info("==> /generate endpoint called. Invoking LangGraph workflow...")
+    
+    # 1. Try to extract an existing brief from the conversation history
+    # (If the user already went through /intake and it was ready)
+    brief = None
+    for msg in reversed(req.conversation):
+        if msg["role"] == "assistant" and "ready" in msg["content"] and "app_mode" in msg["content"]:
+            try:
+                content = msg["content"].strip()
+                # Strip markdown if needed
+                if content.startswith("```"):
+                    content = content.replace("```json", "").replace("```", "").strip()
+                parsed = json.loads(content)
+                if parsed.get("ready") is True:
+                    brief = parsed
+                    logger.info("Found existing brief in conversation. Will attempt to skip intake.")
+                    break
+            except:
+                continue
 
-    # Step 1: Get the brief from the conversation
-    # The final intake call should have returned a brief — run it to confirm
-    steps_log.append("Running intake to extract brief...")
-    brief_result = run_intake(req.conversation, store["node_types"])
+    # Initial state
+    initial_state = {
+        "conversation": req.conversation,
+        "node_types": store["node_types"],
+        "store": store,
+        "brief": brief,
+        "intake_question": None,
+        "manifest": None,
+        "enriched_schemas": None,
+        "edge_rules": None,
+        "layout_rules": None,
+        "app_header_template": None,
+        "yaml_str": None,
+        "errors": [],
+        "steps_log": [],
+        "attempt": 0,
+        "done": False
+    }
 
-    if not brief_result.get("ready"):
+    # Execute graph synchronously
+    final_state = dsl_workflow.invoke(initial_state)
+    
+    logger.info(f"Workflow finished. Done: {final_state.get('done')}, Brief: {final_state.get('brief') is not None}")
+    
+    if final_state.get("done"):
+        # Passed validation or failed max attempts
+        result = {
+            "done": True,
+            "yaml": final_state.get("yaml_str"),
+            "manifest": final_state.get("manifest"),
+            "steps": final_state.get("steps_log", [])
+        }
+        if final_state.get("errors"):
+            result["errors"] = final_state.get("errors")
+            result["warning"] = f"Generated with {len(final_state.get('errors'))} unresolved validation errors"
+        return result
+
+    if final_state.get("brief") is None:
+        # Stopped at Intake needing more info
         return {
             "done": False,
-            "question": brief_result.get("question", "Please provide more details."),
-            "steps": steps_log
+            "question": final_state.get("intake_question", "Please provide more details."),
+            "steps": final_state.get("steps_log", [])
         }
-
-    brief = brief_result
-    steps_log.append(f"Brief ready: {brief.get('app_name')}")
-
-    # Step 2: Plan
-    steps_log.append("Planning node graph...")
-    manifest = run_planner(brief, store["node_types"])
-    steps_log.append(f"Planned {len(manifest['nodes'])} nodes, {len(manifest['edges'])} edges")
-
-    # Step 3: Fetch schemas for needed node types
-    steps_log.append("Fetching node schemas...")
-    needed_types = list({node["type"] for node in manifest.get("nodes", [])})
-    enriched_schemas = {t: store["node_schemas"][t] for t in needed_types if t in store["node_schemas"]}
-    steps_log.append(f"Schemas fetched: {needed_types}")
-
-    # Step 4+5: Assemble → Validate → Retry loop (max 3 attempts)
-    app_mode = manifest.get("app_mode", "workflow")
-    header_key = "workflow" if app_mode == "workflow" else "chat"
-    header_template = store["app_header"].get(header_key, "")
-
-    yaml_str = None
-    last_errors = None
-
-    for attempt in range(3):
-        steps_log.append(f"Assembling YAML (attempt {attempt + 1}/3)...")
-        yaml_str = run_assembler(
-            manifest=manifest,
-            enriched_schemas=enriched_schemas,
-            edge_rules=store["edge_rules"],
-            layout_rules=store["layout_rules"],
-            app_header_template=header_template,
-            previous_errors=last_errors,
-            previous_yaml=yaml_str,
-        )
-
-        steps_log.append("Validating...")
-        result = validate_dsl(yaml_str, manifest)
-
-        if result["valid"]:
-            steps_log.append("✅ Valid DSL generated!")
-            return {
-                "done": True,
-                "yaml": yaml_str,
-                "manifest": manifest,
-                "steps": steps_log
-            }
-
-        last_errors = result["errors"]
-        steps_log.append(f"Validation failed ({len(last_errors)} errors), retrying...")
-
-    # Failed after 3 attempts
+    
+    # Fallback (e.g. if brief is present but not 'done' for some other reason)
     return {
-        "done": True,
-        "yaml": yaml_str,
-        "manifest": manifest,
-        "steps": steps_log,
-        "warning": f"Generated with {len(last_errors)} unresolved validation errors",
-        "errors": last_errors
+        "done": False, 
+        "steps": final_state.get("steps_log", []),
+        "question": final_state.get("intake_question", "Generation failed or timed out.")
     }

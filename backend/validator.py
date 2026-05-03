@@ -3,7 +3,35 @@ validator.py — Pure Python DSL validator. No LLM. Fast, deterministic.
 """
 import re
 import yaml
+import logging
 
+
+from typing import Dict, Any
+from state import AgentState
+
+def validator_node(state: AgentState) -> Dict[str, Any]:
+    """
+    LangGraph Stage 5: Validator + Feedback loop node.
+    """
+    from validator import validate_dsl # Local import to avoid circular dependency if any
+    
+    logger = logging.getLogger("agent.validator")
+    logger.info("--- STAGE 5: VALIDATOR ---")
+    
+    result = validate_dsl(state["yaml_str"], state["manifest"])
+    
+    if result["valid"]:
+        return {
+            "errors": [],
+            "done": True,
+            "steps_log": ["Stage 5: Validation PASSED."]
+        }
+    else:
+        return {
+            "errors": result["errors"],
+            "done": False,
+            "steps_log": [f"Stage 5: Validation FAILED with {len(result['errors'])} errors."]
+        }
 
 def validate_dsl(yaml_str: str, manifest: dict) -> dict:
     """

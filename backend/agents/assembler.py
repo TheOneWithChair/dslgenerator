@@ -1,21 +1,12 @@
-"""
-agents/assembler.py
-Takes the manifest + fetched schemas and writes the final YAML.
-This is the ONLY agent that outputs YAML.
-"""
 import json
 import os
-import google.generativeai as genai
-from dotenv import load_dotenv
 import logging
+from typing import Dict, Any
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
+from state import AgentState
 
 logger = logging.getLogger("agent.assembler")
-
-load_dotenv(override=True)
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("MODEL", "gemini-flash-latest")
-
 
 ASSEMBLER_SYSTEM = """You are a Dify DSL YAML assembler. You write EXACTLY valid Dify DSL YAML.
 
@@ -95,82 +86,73 @@ Always end graph with:
 Output ONLY the YAML. No markdown fences. No explanation. No comments except # CUSTOMIZE markers.
 """
 
-
-def run_assembler(
-    manifest: dict,
-    enriched_schemas: dict,
-    edge_rules: str,
-    layout_rules: str,
-    app_header_template: str,
-    previous_errors: list = None,
-    previous_yaml: str = None
-) -> str:
+def assembler_node(state: AgentState) -> Dict[str, Any]:
     """
-    Assembles the final YAML from the manifest and schemas.
-    
-    Args:
-        manifest: Node manifest from planner
-        enriched_schemas: {node_type: schema_text} for each node used
-        edge_rules: Edge format rules from knowledge store
-        layout_rules: Layout rules from knowledge store
-        app_header_template: App header template for the mode
-        previous_errors: Errors from previous validation attempt (for retry)
-        previous_yaml: Previous YAML output (for retry)
-    
-    Returns:
-        Raw YAML string
+    LangGraph Stage 4: Assembler Agent node.
     """
-    logger.info("Initializing Assembler Agent...")
-    # Build the user message
+    logger.info("--- STAGE 4: ASSEMBLER AGENT ---")
+    state["attempt"] += 1
+    
+    llm = ChatGoogleGenerativeAI(
+        model=os.getenv("MODEL", "gemini-flash-latest"),
+        google_api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.0
+    )
+    
     sections = []
-
     sections.append("=== NODE MANIFEST ===")
-    sections.append(json.dumps(manifest, indent=2))
+    sections.append(json.dumps(state["manifest"], indent=2))
 
     sections.append("\n=== NODE SCHEMAS (use ONLY these fields) ===")
-    for node_type, schema in enriched_schemas.items():
+    for node_type, schema in state["enriched_schemas"].items():
         sections.append(f"\n--- {node_type} schema ---")
         sections.append(schema)
 
     sections.append("\n=== EDGE RULES ===")
-    sections.append(edge_rules)
+    sections.append(state["edge_rules"])
 
     sections.append("\n=== LAYOUT RULES ===")
-    sections.append(layout_rules)
+    sections.append(state["layout_rules"])
 
     sections.append("\n=== APP HEADER TEMPLATE ===")
-    sections.append(app_header_template)
+    sections.append(state["app_header_template"])
 
     # If this is a retry, include the errors
-    if previous_errors:
+    if state["errors"]:
         sections.append("\n=== PREVIOUS ATTEMPT ERRORS — FIX THESE ===")
-        for err in previous_errors:
+        for err in state["errors"]:
             sections.append(f"  - {err}")
         sections.append("\n=== PREVIOUS YAML (fix the errors above) ===")
-        sections.append(previous_yaml or "")
+        sections.append(state["yaml_str"] or "")
         sections.append("\nNow output the CORRECTED full YAML:")
     else:
         sections.append("\nNow output the complete Dify DSL YAML:")
 
     user_message = "\n".join(sections)
-
-    model = genai.GenerativeModel(
-        model_name=MODEL,
-        system_instruction=ASSEMBLER_SYSTEM,
-    )
-
-    logger.info("Sending prompt to Assembler Agent model. Assembling YAML...")
-    response = model.generate_content(
-        user_message,
-        generation_config=genai.types.GenerationConfig(max_output_tokens=4000),
-    )
-    logger.info("Received YAML from Assembler Agent model.")
-
-    raw = response.text.strip()
-
-    # Strip markdown fences if LLM added them
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw
-        raw = raw.replace("```yaml", "").replace("```", "").strip()
-
+    
+    logger.info(f"Assembler: Prompt constructed ({len(user_message)} chars). Invoking LLM...")
+    import time
+    start_time = time.time()
+    
+    messages = [
+        SystemMessage(content=ASSEMBLER_SYSTEM),
+        HumanMessage(content=user_message)
+    ]
+    
+    try:
+        response = llm.invoke(messages)
+        elapsed = time.time() - start_time
+        raw = response.content.strip()
+        logger.info(f"Assembler: LLM response received in {elapsed:.2f}s ({len(raw)} chars).")
+    except Exception as e:
+        logger.error(f"Assembler: LLM call failed: {e}")
+        raise
+    
+    # Strip markdown fences
+    raw = raw.replace("```yaml", "").replace("```", "").strip()
+    
+    return {
+        "yaml_str": raw,
+        "steps_log": [f"Stage 4: Assembled YAML (Attempt {state['attempt']})."]
+    }
     return raw

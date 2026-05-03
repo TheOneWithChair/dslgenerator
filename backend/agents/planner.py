@@ -1,22 +1,12 @@
-"""
-agents/planner.py
-Takes the intake brief and produces a node manifest JSON with UUIDs.
-No YAML written here — only the plan.
-"""
 import json
 import os
-import uuid
-import google.generativeai as genai
-from dotenv import load_dotenv
 import logging
+from typing import Dict, Any
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
+from state import AgentState
 
 logger = logging.getLogger("agent.planner")
-
-load_dotenv(override=True)
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("MODEL", "gemini-flash-latest")
-
 
 PLANNER_SYSTEM = """You are a Dify DSL planner. Given a workflow brief, you produce 
 a precise node manifest JSON. You NEVER write YAML — only a planning JSON.
@@ -90,45 +80,40 @@ Edge id format: "{{from_id}}-source-{{to_id}}-target"
 For if-else: "{{ifelse_id}}-true-{{target_id}}-target" or "{{ifelse_id}}-false-{{target_id}}-target"
 """
 
-
-def run_planner(brief: dict, node_types: list) -> dict:
+def planner_node(state: AgentState) -> Dict[str, Any]:
     """
-    Takes the intake brief, returns a node manifest JSON.
-    
-    Args:
-        brief: The structured brief from the intake agent
-        node_types: Available node types from knowledge store
-    
-    Returns:
-        Manifest dict with nodes, edges, variable_flow
+    LangGraph Stage 2: Planner Agent node.
     """
-    logger.info("Initializing Planner Agent...")
-    system = PLANNER_SYSTEM.format(node_types=", ".join(node_types))
-
-    user_message = f"""Plan a Dify DSL for this brief:
-
-{json.dumps(brief, indent=2)}
-
-Generate the complete node manifest JSON now."""
-
-    logger.info("Sending brief to Planner Agent model...")
-    model = genai.GenerativeModel(
-        model_name=MODEL,
-        system_instruction=system,
+    logger.info("--- STAGE 2: PLANNER AGENT ---")
+    
+    llm = ChatGoogleGenerativeAI(
+        model=os.getenv("MODEL", "gemini-flash-latest"),
+        google_api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.0 # High precision needed
     )
-
-    response = model.generate_content(user_message)
-    logger.info("Received response from Planner Agent model.")
-
-    raw = response.text.strip()
+    
+    system_prompt = PLANNER_SYSTEM.format(node_types=", ".join(state["node_types"]))
+    user_content = f"Plan a Dify DSL for this brief:\n\n{json.dumps(state['brief'], indent=2)}"
+    
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_content)
+    ]
+    
+    response = llm.invoke(messages)
+    raw = response.content.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
-
+    
     try:
         manifest = json.loads(clean)
         # Validate basic structure
         assert "nodes" in manifest, "Missing nodes"
         assert "edges" in manifest, "Missing edges"
-        assert len(manifest["nodes"]) >= 2, "Need at least 2 nodes"
-        return manifest
+        
+        return {
+            "manifest": manifest,
+            "steps_log": [f"Stage 2: Planned {len(manifest.get('nodes', []))} nodes."]
+        }
     except (json.JSONDecodeError, AssertionError) as e:
-        raise ValueError(f"Planner returned invalid manifest: {e}\nRaw: {raw}")
+        logger.error(f"Planner failed: {e}")
+        raise ValueError(f"Planner returned invalid JSON: {e}")
