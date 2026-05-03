@@ -1,0 +1,1107 @@
+# DIFY DSL KNOWLEDGE BASE
+# Format: Parsed by dsl_generator into knowledge_store.json
+# Sections: NODE_SCHEMA | EDGE_RULES | LAYOUT_RULES | APP_HEADER | EXAMPLES | VALIDATION
+################################################################
+
+################################################################
+# SECTION: NODE_SCHEMA
+# Each block is delimited by >>>NODE_START:<type> and >>>NODE_END:<type>
+# <type> must exactly match Dify's BlockEnum string
+################################################################
+
+>>>NODE_START:start
+NAME: Start
+BLOCK_TYPE: start
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+IS_SINGLETON: true
+IS_START: true
+OUTPUTS:
+  - user-defined variables (each variable key becomes an output)
+  - sys.query (string) — chat mode only
+  - sys.files (array[file]) — all modes
+
+REQUIRED_DATA_FIELDS:
+  type: "start"
+  title: string (display name)
+  desc: string (can be empty)
+  variables: InputVar[] (can be empty list)
+
+VARIABLE_SCHEMA (InputVar):
+  variable: string        # key name, must be unique in node
+  label: string           # display label
+  type: InputVarType      # see ENUM below
+  required: boolean
+  max_length: number      # optional, for text/paragraph
+  default: string|number  # optional
+  options: string[]       # required only when type=select
+  placeholder: string     # optional
+  allowed_file_types: ["image","document","audio","video","custom"]   # files only
+  allowed_file_upload_methods: ["local_file","remote_url"]            # files only
+  allowed_file_extensions: [".pdf",".txt",".docx",...]               # files only
+  number_limits: number   # max files, files only
+
+INPUTVARTYPE_ENUM:
+  text-input    → single line text
+  paragraph     → multi-line text
+  select        → dropdown (requires options[])
+  number        → numeric input
+  url           → URL with validation
+  file          → single file upload
+  file-list     → multiple file upload
+  json          → raw JSON
+  checkbox      → boolean
+
+REFERENCE_FORMAT:
+  In template strings: {{#<node_id>.<variable_name>#}}
+  In value_selector:   ["<node_id>", "<variable_name>"]
+
+DSL_SNIPPET:
+  id: "start-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 80
+    y: 282
+  data:
+    type: start
+    title: Start
+    desc: ""
+    variables:
+      - variable: query
+        label: Query
+        type: paragraph
+        required: true
+        max_length: 2000
+      - variable: language
+        label: Language
+        type: select
+        required: true
+        options:
+          - English
+          - Spanish
+          - French
+        default: English
+>>>NODE_END:start
+
+>>>NODE_START:llm
+NAME: LLM
+BLOCK_TYPE: llm
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+OUTPUTS:
+  - text (string) — the model's text response
+  - usage (object) — token usage stats
+  - finish_reason (string) — stop reason
+
+REQUIRED_DATA_FIELDS:
+  type: "llm"
+  title: string
+  desc: string
+  model:
+    provider: string      # e.g. "openai", "anthropic", "azure_openai" — leave "" for user to fill
+    name: string          # e.g. "gpt-4o", "claude-3-5-sonnet" — leave "" for user to fill
+    mode: "chat"          # always "chat" for modern models
+    completion_params:
+      temperature: float  # 0.0–2.0
+      max_tokens: int     # optional
+      top_p: float        # optional
+  prompt_template: PromptMessage[]
+  variables: Variable[]   # variable references used in prompts
+  context:
+    enabled: boolean
+    variable_selector: [] # ["knowledge_node_id", "output_key"] if enabled
+  vision:
+    enabled: boolean      # true only if model supports vision
+
+PROMPT_MESSAGE_SCHEMA:
+  - role: "system" | "user" | "assistant"
+    text: string          # supports {{#node_id.key#}} interpolation
+
+VARIABLE_SCHEMA (Variable — for variables[] list):
+  variable: string        # reference key used in prompt like {{variable}}
+  value_selector: ["node_id", "output_key"]
+
+REFERENCE_FORMAT:
+  LLM output: {{#<node_id>.text#}}
+  In value_selector: ["<node_id>", "text"]
+
+DSL_SNIPPET:
+  id: "llm-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 380
+    y: 282
+  data:
+    type: llm
+    title: Summarize
+    desc: "Summarizes the user input"
+    model:
+      provider: ""
+      name: ""
+      mode: chat
+      completion_params:
+        temperature: 0.7
+    prompt_template:
+      - role: system
+        text: "You are a helpful assistant. Summarize the following text concisely."
+      - role: user
+        text: "{{#start-node-uuid.query#}}"
+    variables: []
+    context:
+      enabled: false
+      variable_selector: []
+    vision:
+      enabled: false
+>>>NODE_END:llm
+
+>>>NODE_START:end
+NAME: End
+BLOCK_TYPE: end
+MODE_AVAILABILITY: workflow ONLY (not chat/chatflow — use answer node instead)
+OUTPUTS: none (terminal node)
+
+REQUIRED_DATA_FIELDS:
+  type: "end"
+  title: string
+  desc: string
+  outputs: OutputVar[]    # declares what values to surface as workflow output
+
+OUTPUT_VAR_SCHEMA:
+  variable: string        # output variable name
+  value_selector: ["source_node_id", "output_key"]
+  value_type: "string" | "number" | "object" | "array" | "file" | "array[file]"
+
+DSL_SNIPPET:
+  id: "end-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 980
+    y: 282
+  data:
+    type: end
+    title: End
+    desc: ""
+    outputs:
+      - variable: result
+        value_selector:
+          - "llm-node-uuid"
+          - text
+        value_type: string
+>>>NODE_END:end
+
+>>>NODE_START:answer
+NAME: Answer
+BLOCK_TYPE: answer
+MODE_AVAILABILITY: chat, advanced-chat ONLY (not workflow — use end node instead)
+IS_REQUIRED: true (chatflow must have at least one)
+OUTPUTS: none (terminal node, streams to user)
+
+REQUIRED_DATA_FIELDS:
+  type: "answer"
+  title: string
+  desc: string
+  answer: string          # response template, supports {{#node_id.key#}}
+  variables: Variable[]   # variable refs used in answer string
+
+DSL_SNIPPET:
+  id: "answer-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 980
+    y: 282
+  data:
+    type: answer
+    title: Answer
+    desc: ""
+    answer: "{{#llm-node-uuid.text#}}"
+    variables: []
+>>>NODE_END:answer
+
+>>>NODE_START:knowledge-retrieval
+NAME: Knowledge Retrieval
+BLOCK_TYPE: knowledge-retrieval
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+OUTPUTS:
+  - result (array[object]) — retrieved document chunks
+
+REQUIRED_DATA_FIELDS:
+  type: "knowledge-retrieval"
+  title: string
+  desc: string
+  query_variable_selector: ["source_node_id", "variable_key"]
+  dataset_ids: string[]   # knowledge base IDs from Dify (user must fill)
+  retrieval_mode: "semantic_search" | "full_text_search" | "hybrid_search"
+  multiple_retrieval_config:
+    retrieval_strategy: "semantic_search" | "full_text_search" | "hybrid_search"
+    top_k: int            # number of results, default 3
+    score_threshold: float | null
+    reranking_enable: boolean
+    reranking_mode: null | object
+
+REFERENCE_FORMAT:
+  In LLM context: enable context and set variable_selector to ["knowledge-node-id", "result"]
+
+DSL_SNIPPET:
+  id: "kr-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 380
+    y: 282
+  data:
+    type: knowledge-retrieval
+    title: Knowledge Retrieval
+    desc: ""
+    query_variable_selector:
+      - "start-node-uuid"
+      - query
+    dataset_ids:
+      - ""                # FILL: knowledge base ID from Dify
+    retrieval_mode: semantic_search
+    multiple_retrieval_config:
+      retrieval_strategy: semantic_search
+      top_k: 3
+      score_threshold: null
+      reranking_enable: false
+      reranking_mode: null
+>>>NODE_END:knowledge-retrieval
+
+>>>NODE_START:if-else
+NAME: IF/ELSE (Condition)
+BLOCK_TYPE: if-else
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+OUTPUTS:
+  - true (branch taken when condition passes)
+  - false (branch taken when condition fails)
+  NOTE: Edges from if-else use sourceHandle "true" or "false" instead of "source"
+
+REQUIRED_DATA_FIELDS:
+  type: "if-else"
+  title: string
+  desc: string
+  logical_operator: "and" | "or"
+  conditions: Condition[]
+
+CONDITION_SCHEMA:
+  variable_selector: ["node_id", "output_key"]
+  comparison_operator: "contains"|"not contains"|"start with"|"end with"|
+                        "is"|"is not"|"empty"|"not empty"|
+                        "="|"≠"|">"|"<"|"≥"|"≤"
+  value: string | number  # comparison value (not needed for empty/not empty)
+
+EDGE_NOTE: if-else edges use sourceHandle "true" or "false":
+  sourceHandle: "true"   # for the passing branch
+  sourceHandle: "false"  # for the failing branch
+
+DSL_SNIPPET:
+  id: "ifelse-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 680
+    y: 282
+  data:
+    type: if-else
+    title: Check Length
+    desc: ""
+    logical_operator: and
+    conditions:
+      - variable_selector:
+          - "llm-node-uuid"
+          - text
+        comparison_operator: "not empty"
+        value: ""
+>>>NODE_END:if-else
+
+>>>NODE_START:code
+NAME: Code
+BLOCK_TYPE: code
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+OUTPUTS:
+  - defined by outputs[] field (user-declared keys)
+
+REQUIRED_DATA_FIELDS:
+  type: "code"
+  title: string
+  desc: string
+  variables: Variable[]   # inputs passed into the code as named vars
+  code_language: "python3" | "javascript"
+  code: string            # the actual code body
+  outputs: CodeOutput[]
+
+CODE_CONTRACT:
+  - Python: define main(args: dict) -> dict
+  - JS: define main(args) { return {}; }
+  - args keys match variable names in variables[]
+  - returned dict keys match names in outputs[]
+
+CODE_OUTPUT_SCHEMA:
+  variable: string
+  value_type: "string" | "number" | "object" | "array" | "file" | "array[file]"
+
+DSL_SNIPPET:
+  id: "code-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 680
+    y: 282
+  data:
+    type: code
+    title: Format Output
+    desc: ""
+    variables:
+      - variable: input_text
+        value_selector:
+          - "llm-node-uuid"
+          - text
+    code_language: python3
+    code: |
+      def main(args: dict) -> dict:
+          text = args.get("input_text", "")
+          return {"word_count": len(text.split()), "result": text.strip()}
+    outputs:
+      - variable: word_count
+        value_type: number
+      - variable: result
+        value_type: string
+>>>NODE_END:code
+
+>>>NODE_START:http-request
+NAME: HTTP Request
+BLOCK_TYPE: http-request
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+OUTPUTS:
+  - body (string) — response body
+  - status_code (number)
+  - headers (object)
+  - files (array[file])
+
+REQUIRED_DATA_FIELDS:
+  type: "http-request"
+  title: string
+  desc: string
+  variables: Variable[]
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+  url: string             # supports {{#node_id.key#}} interpolation
+  headers: string         # raw key:value pairs, one per line
+  params: string          # query params, key:value pairs
+  body:
+    type: "none"|"json"|"raw-text"|"form-data"|"x-www-form-urlencoded"
+    data: string          # body content
+  timeout:
+    connect: int          # seconds
+    read: int
+    write: int
+  ssl_verify: boolean
+  proxy: string
+
+DSL_SNIPPET:
+  id: "http-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 380
+    y: 282
+  data:
+    type: http-request
+    title: Fetch Data
+    desc: ""
+    variables: []
+    method: GET
+    url: "https://api.example.com/data?q={{#start-node-uuid.query#}}"
+    headers: "Authorization: Bearer YOUR_TOKEN"
+    params: ""
+    body:
+      type: none
+      data: ""
+    timeout:
+      connect: 10
+      read: 30
+      write: 20
+    ssl_verify: true
+    proxy: ""
+>>>NODE_END:http-request
+
+>>>NODE_START:template-transform
+NAME: Template Transform
+BLOCK_TYPE: template-transform
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+OUTPUTS:
+  - output (string) — rendered template result
+
+REQUIRED_DATA_FIELDS:
+  type: "template-transform"
+  title: string
+  desc: string
+  variables: Variable[]
+  template: string        # Jinja2 template string
+
+DSL_SNIPPET:
+  id: "template-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 680
+    y: 282
+  data:
+    type: template-transform
+    title: Format Report
+    desc: ""
+    variables:
+      - variable: summary
+        value_selector:
+          - "llm-node-uuid"
+          - text
+    template: |
+      ## Summary Report
+      {{ summary }}
+      ---
+      Generated by workflow.
+    outputs: []
+>>>NODE_END:template-transform
+
+>>>NODE_START:variable-aggregator
+NAME: Variable Aggregator
+BLOCK_TYPE: variable-aggregator
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+PURPOSE: Merges outputs from multiple branches (e.g. after if-else) into one variable
+OUTPUTS:
+  - output (any) — the aggregated value
+
+REQUIRED_DATA_FIELDS:
+  type: "variable-aggregator"
+  title: string
+  desc: string
+  variables: string[][]   # list of value_selectors e.g. [["node_a","text"],["node_b","text"]]
+  output_type: "string" | "number" | "object" | "array"
+
+DSL_SNIPPET:
+  id: "aggregator-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 980
+    y: 282
+  data:
+    type: variable-aggregator
+    title: Merge Results
+    desc: ""
+    variables:
+      - - "llm-node-a-uuid"
+        - text
+      - - "llm-node-b-uuid"
+        - text
+    output_type: string
+>>>NODE_END:variable-aggregator
+
+>>>NODE_START:iteration
+NAME: Iteration (Loop over list)
+BLOCK_TYPE: iteration
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+PURPOSE: Loops over an array, running inner nodes for each item
+OUTPUTS:
+  - output (array) — collected outputs from each iteration
+
+REQUIRED_DATA_FIELDS:
+  type: "iteration"
+  title: string
+  desc: string
+  iterator_selector: ["node_id", "array_output_key"]
+  output_selector: ["inner_node_id", "output_key"]
+  output_type: "string" | "number" | "object" | "array"
+  is_parallel: boolean
+  parallel_nums: int      # concurrent threads if is_parallel true
+  error_handle_mode: "terminated"|"continue"|"remove_abnormal_output"
+  startNodeId: string     # ID of the first node inside the iteration
+
+ITERATION_ITEM_REFERENCE:
+  Inside iteration nodes, the current item is: {{#iteration_node_id.item#}}
+  Index is: {{#iteration_node_id.index#}}
+
+DSL_SNIPPET:
+  id: "iter-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 680
+    y: 282
+  data:
+    type: iteration
+    title: Process Each Item
+    desc: ""
+    iterator_selector:
+      - "code-node-uuid"
+      - items_array
+    output_selector:
+      - "inner-llm-uuid"
+      - text
+    output_type: array
+    is_parallel: false
+    parallel_nums: 1
+    error_handle_mode: terminated
+    startNodeId: "inner-llm-uuid"
+>>>NODE_END:iteration
+
+>>>NODE_START:parameter-extractor
+NAME: Parameter Extractor
+BLOCK_TYPE: parameter-extractor
+MODE_AVAILABILITY: workflow, chat, agent-chat, advanced-chat
+PURPOSE: Uses LLM to extract structured parameters from unstructured text
+OUTPUTS:
+  - each parameter defined in parameters[] becomes an output key
+  - __reason (string) — LLM's reasoning
+
+REQUIRED_DATA_FIELDS:
+  type: "parameter-extractor"
+  title: string
+  desc: string
+  query: ["node_id", "output_key"]   # source text to extract from
+  model:
+    provider: string
+    name: string
+    mode: "chat"
+    completion_params:
+      temperature: float
+  parameters: Parameter[]
+  instruction: string     # extraction instructions for the LLM
+  reasoning_mode: "prompt" | "function_call"
+
+PARAMETER_SCHEMA:
+  name: string
+  type: "string" | "number" | "bool" | "select" | "array[string]" | "array[number]" | "array[object]"
+  description: string
+  required: boolean
+  options: string[]       # only when type=select
+
+DSL_SNIPPET:
+  id: "extractor-node-uuid"
+  type: custom
+  sourcePosition: right
+  targetPosition: left
+  position:
+    x: 380
+    y: 282
+  data:
+    type: parameter-extractor
+    title: Extract Details
+    desc: ""
+    query:
+      - "start-node-uuid"
+      - query
+    model:
+      provider: ""
+      name: ""
+      mode: chat
+      completion_params:
+        temperature: 0.2
+    parameters:
+      - name: topic
+        type: string
+        description: "The main topic being asked about"
+        required: true
+      - name: urgency
+        type: select
+        description: "Urgency level of the request"
+        required: false
+        options:
+          - low
+          - medium
+          - high
+    instruction: "Extract the topic and urgency level from the user query."
+    reasoning_mode: function_call
+>>>NODE_END:parameter-extractor
+
+###############################################################
+# SECTION: EDGE_RULES
+# Exact edge format that Dify imports correctly
+###############################################################
+
+>>>EDGE_RULES_START
+
+STANDARD_EDGE_FORMAT:
+  id: "{source_node_id}-source-{target_node_id}-target"
+  source: "{source_node_id}"
+  sourceHandle: source
+  target: "{target_node_id}"
+  targetHandle: target
+  type: custom
+  data:
+    sourceType: {source_block_type}    # e.g. "start", "llm", "code"
+    targetType: {target_block_type}    # e.g. "llm", "end", "answer"
+    isInIteration: false
+    isInLoop: false
+  zIndex: 0
+
+IF_ELSE_EDGE_TRUE_BRANCH:
+  id: "{ifelse_node_id}-true-{target_node_id}-target"
+  source: "{ifelse_node_id}"
+  sourceHandle: "true"               # NOT "source" — must be "true"
+  target: "{target_node_id}"
+  targetHandle: target
+  type: custom
+  data:
+    sourceType: if-else
+    targetType: {target_block_type}
+    isInIteration: false
+    isInLoop: false
+  zIndex: 0
+
+IF_ELSE_EDGE_FALSE_BRANCH:
+  id: "{ifelse_node_id}-false-{target_node_id}-target"
+  source: "{ifelse_node_id}"
+  sourceHandle: "false"              # NOT "source" — must be "false"
+  target: "{target_node_id}"
+  targetHandle: target
+  type: custom
+  data:
+    sourceType: if-else
+    targetType: {target_block_type}
+    isInIteration: false
+    isInLoop: false
+  zIndex: 0
+
+ITERATION_INNER_EDGE:
+  Same as STANDARD_EDGE_FORMAT but:
+  data:
+    isInIteration: true              # set true for edges INSIDE an iteration block
+    isInLoop: false
+
+RULES:
+  1. Edge ID format MUST be: "{source_id}-source-{target_id}-target"
+     Exception: if-else uses "{ifelse_id}-true-{target_id}-target" or "{ifelse_id}-false-{target_id}-target"
+  2. Every node except End/Answer MUST have at least one outgoing edge
+  3. Every node except Start MUST have at least one incoming edge
+  4. zIndex is always 0
+  5. type is always "custom"
+  6. targetHandle is always "target"
+  7. sourceHandle is "source" for all nodes EXCEPT if-else (which uses "true"/"false")
+
+>>>EDGE_RULES_END
+
+###############################################################
+# SECTION: LAYOUT_RULES
+# Canvas position rules for correct visual rendering
+###############################################################
+
+>>>LAYOUT_RULES_START
+
+X_AXIS_SPACING:
+  Start node:        x = 80
+  Each subsequent column: x += 300
+  So: col0=80, col1=380, col2=680, col3=980, col4=1280
+
+Y_AXIS_RULES:
+  Single linear flow:        y = 282 for all nodes
+  Parallel branches (if-else true):   y = 100
+  Parallel branches (if-else false):  y = 460
+  Merge after branches:       y = 282
+  Inner iteration nodes:      y = 282 (relative to iteration container)
+
+POSITION_FORMULA:
+  position:
+    x: 80 + (column_index * 300)
+    y: 282   # for linear flow
+
+ITERATION_CONTAINER:
+  The iteration node itself has a position
+  Inner nodes positions are relative to the iteration container's origin
+  Inner nodes: x starts at 80, y = 282
+
+VIEWPORT:
+  Always set:
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7
+
+>>>LAYOUT_RULES_END
+
+###############################################################
+# SECTION: APP_HEADER
+# Exact top-level YAML structure for every DSL file
+###############################################################
+
+>>>APP_HEADER_START
+
+WORKFLOW_MODE_HEADER:
+  version: "0.6.0"
+  kind: app
+  app:
+    name: "{app_name}"
+    mode: workflow
+    icon: "🤖"
+    icon_background: "#FFEAD5"
+    icon_type: emoji
+    description: "{description}"
+    use_icon_as_answer_icon: false
+  dependencies: []
+  workflow:
+    environment_variables: []
+    conversation_variables: []
+    features:
+      file_upload:
+        enabled: false
+      opening_statement: ""
+      retriever_resource:
+        enabled: false
+      sensitive_word_avoidance:
+        enabled: false
+      speech_to_text:
+        enabled: false
+      suggested_questions: []
+      suggested_questions_after_answer:
+        enabled: false
+      text_to_speech:
+        enabled: false
+    graph:
+      edges: [...]
+      nodes: [...]
+      viewport:
+        x: 0
+        y: 0
+        zoom: 0.7
+
+CHATFLOW_MODE_HEADER:
+  version: "0.6.0"
+  kind: app
+  app:
+    name: "{app_name}"
+    mode: chat
+    icon: "💬"
+    icon_background: "#D5F5F6"
+    icon_type: emoji
+    description: "{description}"
+    use_icon_as_answer_icon: false
+  dependencies: []
+  workflow:
+    environment_variables: []
+    conversation_variables: []
+    features:
+      file_upload:
+        enabled: false
+      opening_statement: "Hello! How can I help you today?"
+      retriever_resource:
+        enabled: false
+      sensitive_word_avoidance:
+        enabled: false
+      speech_to_text:
+        enabled: false
+      suggested_questions: []
+      suggested_questions_after_answer:
+        enabled: false
+      text_to_speech:
+        enabled: false
+    graph:
+      edges: [...]
+      nodes: [...]
+      viewport:
+        x: 0
+        y: 0
+        zoom: 0.7
+
+MODE_SELECTION_RULES:
+  workflow    → use End node, no sys.query, form-based inputs
+  chat        → use Answer node, sys.query available, conversational
+  agent-chat  → use Answer node, agent can use tools autonomously
+  advanced-chat → use Answer node, full chatflow with branches
+
+>>>APP_HEADER_END
+
+###############################################################
+# SECTION: VALIDATION_RULES
+# Rules the validator checks AFTER assembly
+###############################################################
+
+>>>VALIDATION_RULES_START
+
+STRUCTURAL_RULES:
+  1. Every DSL must have exactly one Start node
+  2. workflow mode: must have at least one End node, zero Answer nodes
+  3. chat mode: must have at least one Answer node, zero End nodes
+  4. Every non-terminal node must have at least one outgoing edge
+  5. Every non-start node must have at least one incoming edge
+  6. No orphan nodes (nodes with no edges at all)
+
+REFERENCE_RULES:
+  7. Every {{#node_id.key#}} — node_id must exist in nodes[]
+  8. Every value_selector[0] must be a node_id that exists in nodes[]
+  9. Every edge source and target must be node_ids that exist in nodes[]
+  10. if-else edges must use sourceHandle "true" or "false", not "source"
+
+FIELD_RULES:
+  11. Every node must have: id, type=custom, sourcePosition, targetPosition, position, data.type, data.title, data.desc
+  12. llm nodes must have: model.provider, model.name, model.mode, prompt_template (non-empty)
+  13. end nodes must have: outputs[] (can be empty list)
+  14. answer nodes must have: answer field (non-empty string)
+  15. code nodes must have: code, code_language, outputs[]
+  16. knowledge-retrieval nodes must have: dataset_ids[] (can be placeholder), query_variable_selector
+
+ID_RULES:
+  17. All node IDs must be unique
+  18. Edge IDs must be unique
+  19. Recommended ID format: UUID v4 (e.g. "a1b2c3d4-1a2b-4c3d-8e5f-1a2b3c4d5e6f")
+  20. Start node ID is typically "start-node-uuid" style but any unique string works
+
+>>>VALIDATION_RULES_END
+
+###############################################################
+# SECTION: EXAMPLES
+# Full working DSL examples for few-shot reference
+###############################################################
+
+>>>EXAMPLE_START:simple_chatflow
+# Simple Chatflow: Start -> LLM -> Answer
+version: "0.6.0"
+kind: app
+app:
+  name: "Simple Chat Assistant"
+  mode: chat
+  icon: "💬"
+  icon_background: "#D5F5F6"
+  icon_type: emoji
+  description: "A simple chatflow that answers user queries."
+  use_icon_as_answer_icon: false
+dependencies: []
+workflow:
+  environment_variables: []
+  conversation_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: "Hello! Ask me anything."
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      - id: "a1b2c3d4-source-e5f6a7b8-target"
+        source: "a1b2c3d4-1a2b-4c3d-8e5f-aabbccddeeff"
+        sourceHandle: source
+        target: "e5f6a7b8-2b3c-4d5e-9f0a-bbccddeeff00"
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: start
+          targetType: llm
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+      - id: "e5f6a7b8-source-f1e2d3c4-target"
+        source: "e5f6a7b8-2b3c-4d5e-9f0a-bbccddeeff00"
+        sourceHandle: source
+        target: "f1e2d3c4-3c4d-4e5f-a0b1-ccddeeff0011"
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: answer
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+    nodes:
+      - id: "a1b2c3d4-1a2b-4c3d-8e5f-aabbccddeeff"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 80
+          y: 282
+        data:
+          type: start
+          title: Start
+          desc: ""
+          variables: []
+      - id: "e5f6a7b8-2b3c-4d5e-9f0a-bbccddeeff00"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 380
+          y: 282
+        data:
+          type: llm
+          title: Answer Query
+          desc: "Respond to the user's question."
+          model:
+            provider: ""
+            name: ""
+            mode: chat
+            completion_params:
+              temperature: 0.7
+          prompt_template:
+            - role: system
+              text: "You are a helpful assistant. Answer the user's question clearly and concisely."
+            - role: user
+              text: "{{#a1b2c3d4-1a2b-4c3d-8e5f-aabbccddeeff.sys.query#}}"
+          variables: []
+          context:
+            enabled: false
+            variable_selector: []
+          vision:
+            enabled: false
+      - id: "f1e2d3c4-3c4d-4e5f-a0b1-ccddeeff0011"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 680
+          y: 282
+        data:
+          type: answer
+          title: Answer
+          desc: ""
+          answer: "{{#e5f6a7b8-2b3c-4d5e-9f0a-bbccddeeff00.text#}}"
+          variables: []
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7
+>>>EXAMPLE_END:simple_chatflow
+
+>>>EXAMPLE_START:simple_workflow
+# Simple Workflow: Start -> LLM -> End
+version: "0.6.0"
+kind: app
+app:
+  name: "Text Summarizer"
+  mode: workflow
+  icon: "📝"
+  icon_background: "#FFEAD5"
+  icon_type: emoji
+  description: "Summarizes the provided text."
+  use_icon_as_answer_icon: false
+dependencies: []
+workflow:
+  environment_variables: []
+  conversation_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ""
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      - id: "s1t2a3r4-source-l1l2m3n4-target"
+        source: "s1t2a3r4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"
+        sourceHandle: source
+        target: "l1l2m3n4-6b7c-4d8e-9f0a-1b2c3d4e5f6a"
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: start
+          targetType: llm
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+      - id: "l1l2m3n4-source-e1n2d3x4-target"
+        source: "l1l2m3n4-6b7c-4d8e-9f0a-1b2c3d4e5f6a"
+        sourceHandle: source
+        target: "e1n2d3x4-7c8d-4e9f-a01b-2c3d4e5f6a7b"
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: end
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+    nodes:
+      - id: "s1t2a3r4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 80
+          y: 282
+        data:
+          type: start
+          title: Start
+          desc: ""
+          variables:
+            - variable: text
+              label: Text to Summarize
+              type: paragraph
+              required: true
+              max_length: 5000
+      - id: "l1l2m3n4-6b7c-4d8e-9f0a-1b2c3d4e5f6a"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 380
+          y: 282
+        data:
+          type: llm
+          title: Summarize
+          desc: "Summarize the input text."
+          model:
+            provider: ""
+            name: ""
+            mode: chat
+            completion_params:
+              temperature: 0.5
+          prompt_template:
+            - role: system
+              text: "You are an expert summarizer. Provide a concise summary of the following text in 3-5 sentences."
+            - role: user
+              text: "{{#s1t2a3r4-5a6b-4c7d-8e9f-0a1b2c3d4e5f.text#}}"
+          variables: []
+          context:
+            enabled: false
+            variable_selector: []
+          vision:
+            enabled: false
+      - id: "e1n2d3x4-7c8d-4e9f-a01b-2c3d4e5f6a7b"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 680
+          y: 282
+        data:
+          type: end
+          title: End
+          desc: ""
+          outputs:
+            - variable: summary
+              value_selector:
+                - "l1l2m3n4-6b7c-4d8e-9f0a-1b2c3d4e5f6a"
+                - text
+              value_type: string
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7
+>>>EXAMPLE_END:simple_workflow
