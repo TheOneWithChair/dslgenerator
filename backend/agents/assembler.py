@@ -7,6 +7,9 @@ import json
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger("agent.assembler")
 
 load_dotenv(override=True)
 
@@ -117,6 +120,7 @@ def run_assembler(
     Returns:
         Raw YAML string
     """
+    logger.info("Initializing Assembler Agent...")
     # Build the user message
     sections = []
 
@@ -155,10 +159,12 @@ def run_assembler(
         system_instruction=ASSEMBLER_SYSTEM,
     )
 
+    logger.info("Sending prompt to Assembler Agent model. Assembling YAML...")
     response = model.generate_content(
         user_message,
         generation_config=genai.types.GenerationConfig(max_output_tokens=4000),
     )
+    logger.info("Received YAML from Assembler Agent model.")
 
     raw = response.text.strip()
 

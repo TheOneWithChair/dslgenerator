@@ -11,6 +11,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("orchestrator")
 
 load_dotenv(override=True)
 
@@ -97,7 +101,12 @@ def intake(req: IntakeRequest):
     One turn of the intake agent.
     Returns either a clarifying question or the complete brief.
     """
+    logger.info(f"==> /intake endpoint called with {len(req.conversation)} conversation turns.")
     result = run_intake(req.conversation, store["node_types"])
+    if result.get("ready"):
+        logger.info("<== Intake Agent finished: Brief is READY.")
+    else:
+        logger.info("<== Intake Agent finished: Asking clarifying question.")
     return result
 
 
@@ -107,7 +116,10 @@ def plan(req: PlanRequest):
     Runs the planner agent on a completed brief.
     Returns the node manifest JSON.
     """
+    logger.info("==> /plan endpoint called. Starting Planner Agent...")
     manifest = run_planner(req.brief, store["node_types"])
+    nodes_count = len(manifest.get("nodes", []))
+    logger.info(f"<== Planner Agent finished. Generated manifest with {nodes_count} nodes.")
     return {"manifest": manifest}
 
 
@@ -117,6 +129,7 @@ def assemble(req: AssembleRequest):
     Assembles YAML from the manifest.
     Fetches only the schemas needed for the nodes in this manifest.
     """
+    logger.info("==> /assemble endpoint called. Starting Assembler Agent...")
     manifest = req.manifest
 
     # Fetch only needed schemas (not the full store)
@@ -141,6 +154,7 @@ def assemble(req: AssembleRequest):
         previous_errors=req.previous_errors,
         previous_yaml=req.previous_yaml,
     )
+    logger.info("<== Assembler Agent finished. YAML assembled successfully.")
     return {"yaml": yaml_str}
 
 

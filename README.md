@@ -14,6 +14,36 @@ It acts as your Dify Workflow architect. Simply chat with the UI to explain what
 - **FastAPI Backend:** Handles all the LLM integrations, state management, and validation logic robustly.
 - **Streamlit Frontend:** A sleek, interactive chat interface where you can build and view your YAML workflow live.
 
+## 🤖 Agent Pipeline Architecture
+
+The intelligence of the DSL Generator is broken into a 3-agent pipeline, orchestrating a flow from raw human text into structural JSON and finally into correct YAML syntax.
+
+```mermaid
+graph TD
+    User([User]) <--> |Multi-turn Chat| Intake[Intake Agent]
+    Intake -->|Structured JSON Brief| Planner[Planner Agent]
+    Planner -->|Node Manifest JSON| Assembler[Assembler Agent]
+    Assembler -->|Raw YAML| Validator{Python Validator}
+    Validator -->|Validation Errors| Assembler
+    Validator -->|Valid YAML| Final([Deployable Dify YAML])
+```
+
+1. **Intake Agent (`intake.py`)** 
+   - **Role:** Business Analyst
+   - **Behavior:** Operates in a multi-turn chat loop with the user. It asks clarifying questions until it has enough context to build a Dify App. 
+   - **Output:** Once satisfied, it outputs a `Brief` (a structured JSON object detailing the app name, mode, and conceptual nodes).
+   
+2. **Planner Agent (`planner.py`)**
+   - **Role:** Systems Architect
+   - **Behavior:** Takes the `Brief` and translates it into a strict `Node Manifest` (JSON). It resolves edge mappings, creates unique UUIDs for each node, applies mode rules (like ensuring `End` nodes for workflows vs `Answer` nodes for chatflows), and configures variable flows (like `{{#node_id.key#}}`).
+   - **Output:** A JSON array of configured nodes and edges.
+   
+3. **Assembler Agent (`assembler.py`)**
+   - **Role:** YAML Developer
+   - **Behavior:** Takes the JSON `Node Manifest` and merges it with the rigid structural schemas defined in `knowledge_store.json`. It applies exact indentation, applies layout XY coordinates, and guarantees valid syntax. 
+   - **Self-Healing Loop:** If the output YAML fails the deterministic python `validator.py`, the validation errors are fed *back* into the Assembler Agent, allowing it to autonomously fix its own mistakes until the YAML is perfect.
+   - **Output:** The final, deployable `workflow.yaml`.
+
 ## 📁 Project Structure
 
 ```text

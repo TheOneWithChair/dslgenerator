@@ -8,6 +8,9 @@ import os
 import uuid
 import google.generativeai as genai
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger("agent.planner")
 
 load_dotenv(override=True)
 
@@ -99,6 +102,7 @@ def run_planner(brief: dict, node_types: list) -> dict:
     Returns:
         Manifest dict with nodes, edges, variable_flow
     """
+    logger.info("Initializing Planner Agent...")
     system = PLANNER_SYSTEM.format(node_types=", ".join(node_types))
 
     user_message = f"""Plan a Dify DSL for this brief:
@@ -107,12 +111,14 @@ def run_planner(brief: dict, node_types: list) -> dict:
 
 Generate the complete node manifest JSON now."""
 
+    logger.info("Sending brief to Planner Agent model...")
     model = genai.GenerativeModel(
         model_name=MODEL,
         system_instruction=system,
     )
 
     response = model.generate_content(user_message)
+    logger.info("Received response from Planner Agent model.")
 
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()

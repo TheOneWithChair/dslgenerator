@@ -6,6 +6,9 @@ import json
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger("agent.intake")
 
 load_dotenv(override=True)
 
@@ -70,6 +73,7 @@ def run_intake(conversation_history: list, node_types: list) -> dict:
         {"ready": False, "question": "..."} — needs more info
         {"ready": True, ...brief fields...} — brief complete
     """
+    logger.info("Initializing Intake Agent...")
     system = INTAKE_SYSTEM.format(node_types=", ".join(node_types))
 
     # Build Gemini chat history (exclude last user message — passed separately)
@@ -87,9 +91,11 @@ def run_intake(conversation_history: list, node_types: list) -> dict:
     chat = model.start_chat(history=gemini_history)
 
     last_message = conversation_history[-1]["content"]
+    logger.info(f"Sending message to Intake Agent model. History length: {len(gemini_history)}")
     response = chat.send_message(last_message)
 
     raw = response.text.strip()
+    logger.info("Received response from Intake Agent model.")
 
     # Try to parse as JSON
     try:

@@ -1,0 +1,59 @@
+  quota_dimensions {
+
+G:\projects\dslgenerator\backend>uvicorn main:app --reload --port 8001
+INFO:     Will watch for changes in these directories: ['G:\\projects\\dslgenerator\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [49556] using WatchFiles
+INFO:     Started server process [49312]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:65408 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65410 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65415 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65416 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65418 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 20:06:18,707 - orchestrator - INFO - ==> /intake endpoint called with 1 conversation turns.
+2026-05-03 20:06:18,707 - agent.intake - INFO - Initializing Intake Agent...
+2026-05-03 20:06:18,708 - agent.intake - INFO - Sending message to Intake Agent model. History length: 0
+2026-05-03 20:06:20,827 - agent.intake - INFO - Received response from Intake Agent model.
+2026-05-03 20:06:20,828 - orchestrator - INFO - <== Intake Agent finished: Asking clarifying question.
+INFO:     127.0.0.1:65421 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65425 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65215 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65217 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 20:06:39,066 - orchestrator - INFO - ==> /intake endpoint called with 3 conversation turns.
+2026-05-03 20:06:39,067 - agent.intake - INFO - Initializing Intake Agent...
+2026-05-03 20:06:39,067 - agent.intake - INFO - Sending message to Intake Agent model. History length: 2    
+2026-05-03 20:06:41,108 - agent.intake - INFO - Received response from Intake Agent model.
+2026-05-03 20:06:41,108 - orchestrator - INFO - <== Intake Agent finished: Asking clarifying question.      
+INFO:     127.0.0.1:65219 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50316 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55820 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55824 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 20:09:17,528 - orchestrator - INFO - ==> /intake endpoint called with 5 conversation turns.
+2026-05-03 20:09:17,528 - agent.intake - INFO - Initializing Intake Agent...
+2026-05-03 20:09:17,528 - agent.intake - INFO - Sending message to Intake Agent model. History length: 4    
+2026-05-03 20:09:22,248 - agent.intake - INFO - Received response from Intake Agent model.
+2026-05-03 20:09:22,248 - orchestrator - INFO - <== Intake Agent finished: Asking clarifying question.      
+INFO:     127.0.0.1:55827 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64401 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62181 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62183 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 20:10:08,927 - orchestrator - INFO - ==> /intake endpoint called with 7 conversation turns.
+2026-05-03 20:10:08,928 - agent.intake - INFO - Initializing Intake Agent...
+2026-05-03 20:10:08,928 - agent.intake - INFO - Sending message to Intake Agent model. History length: 6    
+2026-05-03 20:10:14,600 - agent.intake - INFO - Received response from Intake Agent model.
+2026-05-03 20:10:14,600 - orchestrator - INFO - <== Intake Agent finished: Brief is READY.
+INFO:     127.0.0.1:62185 - "POST /intake HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49898 - "GET /health HTTP/1.1" 200 OK
+2026-05-03 20:10:19,755 - agent.intake - INFO - Initializing Intake Agent...
+2026-05-03 20:10:19,756 - agent.intake - INFO - Sending message to Intake Agent model. History length: 7    
+2026-05-03 20:10:25,258 - agent.intake - INFO - Received response from Intake Agent model.
+2026-05-03 20:10:25,258 - agent.planner - INFO - Initializing Planner Agent...
+2026-05-03 20:10:25,259 - agent.planner - INFO - Sending brief to Planner Agent model...
+2026-05-03 20:10:34,304 - agent.planner - INFO - Received response from Planner Agent model.
+2026-05-03 20:10:34,306 - agent.assembler - INFO - Initializing Assembler Agent...
+2026-05-03 20:10:34,307 - agent.assembler - INFO - Sending prompt to Assembler Agent model. Assembling YAML...
+2026-05-03 20:10:46,835 - agent.assembler - INFO - Received YAML from Assembler Agent model.
+INFO:     127.0.0.1:49900 - "POST /generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57419 - "GET /health HTTP/1.1" 200 OK
