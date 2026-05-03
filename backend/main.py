@@ -4,6 +4,7 @@ Run with: uvicorn backend.main:app --reload --port 8001
 """
 import json
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -11,7 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 
-load_dotenv()
+load_dotenv(override=True)
+
+# Ensure backend/ is on sys.path so `agents` and `validator` can be imported
+# regardless of where uvicorn is launched from.
+_BACKEND_DIR = Path(__file__).parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
 from agents.intake import run_intake
 from agents.planner import run_planner

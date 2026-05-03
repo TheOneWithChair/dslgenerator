@@ -8,10 +8,10 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("MODEL", "gemini-2.0-flash-latest")
+MODEL = os.getenv("MODEL", "gemini-flash-latest")
 
 
 ASSEMBLER_SYSTEM = """You are a Dify DSL YAML assembler. You write EXACTLY valid Dify DSL YAML.
@@ -71,9 +71,11 @@ If-else TRUE branch edge:
   zIndex: 0
 
 === VARIABLE REFERENCES ===
+CRITICAL: You MUST use exact Dify syntax for references. Plain variables like {{content}} will FAIL.
 In prompt_template text: {{#node_id.output_key#}}
 In value_selector arrays: ["node_id", "output_key"]
 In answer field: {{#node_id.output_key#}}
+CRITICAL: All Start node variables MUST have `required: true`.
 
 === LAYOUT ===
 x = 80 + (column_index * 300)

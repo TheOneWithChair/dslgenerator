@@ -7,10 +7,10 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("MODEL", "gemini-2.0-flash-latest")
+MODEL = os.getenv("MODEL", "gemini-flash-latest")
 
 
 INTAKE_SYSTEM = """You are a Dify workflow intake specialist. Your job is to understand 

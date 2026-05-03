@@ -9,10 +9,10 @@ import uuid
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("MODEL", "gemini-2.0-flash-latest")
+MODEL = os.getenv("MODEL", "gemini-flash-latest")
 
 
 PLANNER_SYSTEM = """You are a Dify DSL planner. Given a workflow brief, you produce 
@@ -28,6 +28,8 @@ Critical rules:
 5. Variable references format: ["source_node_id", "output_key"]
 6. Only use node types from the available list
 7. if-else nodes have TWO outgoing edges: one with branch "true", one with "false"
+8. CRITICAL: Start node variables MUST have "required": true.
+9. CRITICAL: LLM prompt templates MUST map variables using the exact Dify syntax: {{#source_node_id.output_key#}} (e.g. {{#start_id.content#}}). Do NOT use plain {{content}}.
 
 Available node types: {node_types}
 
@@ -55,7 +57,7 @@ Output ONLY valid JSON, no markdown, no explanation:
       "desc": "what this node does",
       "config_hints": {{
         "system_prompt": "...",
-        "user_prompt_template": "uses {{#prev_node_id.output_key#}}",
+        "user_prompt_template": "uses {{#prev_node_id.output_key#}} (MUST USE THIS EXACT SYNTAX)",
         "temperature": 0.7
       }}
     }}
