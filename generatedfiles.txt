@@ -416,17 +416,15 @@ kind: app
 app:
   name: "EvenOddChecker"
   mode: workflow
-  icon: "🔢"
-  icon_background: "#D3D3D3"
+  icon: "🤖"
+  icon_background: "#FFEAD5"
   icon_type: emoji
-  description: "Determines if a user-provided number is even or odd"
+  description: "Determines if a number is even or odd"
   use_icon_as_answer_icon: false
 dependencies: []
 workflow:
   environment_variables: []
-  conversation_variables:
-    - name: number
-      required: true
+  conversation_variables: []
   features:
     file_upload:
       enabled: false
@@ -443,33 +441,8 @@ workflow:
     text_to_speech:
       enabled: false
   graph:
-    edges:
-      - id: "start-source-code_1-target"
-        source: "start"
-        sourceHandle: source
-        target: "code_1"
-        targetHandle: target
-        type: custom
-        data:
-          sourceType: start
-          targetType: code
-          isInIteration: false
-          isInLoop: false
-        zIndex: 0
-      - id: "code_1-source-end_1-target"
-        source: "code_1"
-        sourceHandle: source
-        target: "end_1"
-        targetHandle: target
-        type: custom
-        data:
-          sourceType: code
-          targetType: end
-          isInIteration: false
-          isInLoop: false
-        zIndex: 0
     nodes:
-      - id: "start"
+      - id: "start-node-uuid"
         type: custom
         sourcePosition: right
         targetPosition: left
@@ -479,41 +452,43 @@ workflow:
         data:
           type: start
           title: Start
-          desc: "Receives user input number"
+          desc: "Receives input number"
           variables:
-            - variable: number
-              label: "Enter a Number"
-              type: number-input
+            - variable: input_number
+              label: "Enter a number"
+              type: number
               required: true
-      - id: "code_1"
+      - id: "code-node-uuid"
+        type: custom
+        sourcePosition: right
+        targetPosition: left
+        position:
+          x: 380
+          y: 282
+        data:
+          type: code
+          title: "Check Parity"
+          desc: "Use modulo operation to determine even/odd"
+          variables:
+            - variable: input_number
+              value_selector:
+                - "start-node-uuid"
+                - input_number
+          code_language: python3
+          code: |
+            def main(args: dict) -> dict:
+                num = args.get("input_number")
+                result = "Even number" if num % 2 == 0 else "Odd number"
+                return {"parity": result}
+          outputs:
+            - variable: parity
+              value_type: string
+      - id: "end-node-uuid"
         type: custom
         sourcePosition: right
         targetPosition: left
         position:
           x: 680
-          y: 282
-        data:
-          type: code
-          title: "Check Even/Odd"
-          desc: "Uses modulus operator to determine parity"
-          variables:
-            - variable: number
-              value_selector:
-                - "start"
-                - number
-          code_language: javascript
-          code: |
-            const result = {{number}} % 2 === 0 ? 'Even number' : 'Odd number';
-            result;
-          outputs:
-            - variable: result
-              value_type: string
-      - id: "end_1"
-        type: custom
-        sourcePosition: right
-        targetPosition: left
-        position:
-          x: 980
           y: 282
         data:
           type: end
@@ -522,9 +497,34 @@ workflow:
           outputs:
             - variable: result
               value_selector:
-                - "code_1"
-                - result
+                - "code-node-uuid"
+                - parity
               value_type: string
+    edges:
+      - id: "start-node-uuid-source-code-node-uuid-target"
+        source: "start-node-uuid"
+        sourceHandle: source
+        target: "code-node-uuid"
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: start
+          targetType: code
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
+      - id: "code-node-uuid-source-end-node-uuid-target"
+        source: "code-node-uuid"
+        sourceHandle: source
+        target: "end-node-uuid"
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: code
+          targetType: end
+          isInIteration: false
+          isInLoop: false
+        zIndex: 0
     viewport:
       x: 0
       y: 0
